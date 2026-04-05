@@ -29,8 +29,8 @@ ota:
     password: ""
 
 wifi:
-  ssid: "ReplaceMe"
-  password: "ReplaceMe!"
+  ssid: "I cant believe its not WiFi"
+  password: "Epimetheus42"
   power_save_mode: "NONE"
 
   # Enable fallback hotspot (captive portal) in case wifi connection fails
@@ -76,6 +76,6 @@ color:
 
 flight_tracker:
   id: tracker
-  host: "192.168.1.100"  # IP of dump1090 server
+  host: "172.16.0.32"  # IP of dump1090 server
   port: 30003
   limit: 3

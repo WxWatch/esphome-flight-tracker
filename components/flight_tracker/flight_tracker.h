@@ -9,18 +9,11 @@
 #include "esphome/components/time/real_time_clock.h"
 
 #include "schedule_state.h"
-#include "localization.h"
 
 namespace esphome
 {
   namespace flight_tracker
   {
-
-    struct RouteStyle
-    {
-      std::string name;
-      Color color;
-    };
 
     class FlightTracker : public Component
     {
@@ -45,20 +38,8 @@ namespace esphome
 
       void set_host(const std::string &host) { host_ = host; }
       void set_port(int port) { port_ = port; }
-      void set_feed_code(const std::string &feed_code) { feed_code_ = feed_code; }
-      void set_display_departure_times(bool display_departure_times) { display_departure_times_ = display_departure_times; }
-      void set_schedule_string(const std::string &schedule_string) { schedule_string_ = schedule_string; }
-      void set_list_mode(const std::string &list_mode) { list_mode_ = list_mode; }
       void set_limit(int limit) { limit_ = limit; }
       void set_scroll_headsigns(bool scroll_headsigns) { scroll_headsigns_ = scroll_headsigns; }
-
-      void set_unit_display(UnitDisplay unit_display) { this->localization_.set_unit_display(unit_display); }
-      void add_abbreviation(const std::string &from, const std::string &to) { abbreviations_[from] = to; }
-      void set_default_route_color(const Color &color) { default_route_color_ = color; }
-      void add_route_style(const std::string &route_id, const std::string &name, const Color &color) { route_styles_[route_id] = RouteStyle{name, color}; }
-
-      void set_abbreviations_from_text(const std::string &text);
-      void set_route_styles_from_text(const std::string &text);
 
       void set_realtime_color(const Color &color);
 
@@ -93,15 +74,8 @@ namespace esphome
 
       std::string host_;
       int port_ = 30003;
-      std::string feed_code_;
-      std::string schedule_string_;
-      std::string list_mode_;
-      bool display_departure_times_ = true;
       int limit_;
 
-      std::map<std::string, std::string> abbreviations_;
-      Color default_route_color_ = Color(0x028e51);
-      std::map<std::string, RouteStyle> route_styles_;
       bool scroll_headsigns_ = false;
 
       Color realtime_color_ = Color(0x20FF00);
