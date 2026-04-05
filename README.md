@@ -1,8 +1,6 @@
 # ESPHome Flight Tracker Component
 
-This is an external component for [ESPHome](https://esphome.io/) that fetches and renders a live arrivals board for any transit agency supported by the [Transit Tracker API](https://github.com/tjhorner/transit-tracker-api).
-
-This component is used by the [Transit Tracker](https://transit-tracker.eastsideurbanism.org/) project. Check it out if you want to build your own!
+This is an external component for [ESPHome](https://esphome.io/) that fetches and displays live aircraft data from dump1090 in SBS1 format.
 
 ## Note
 
@@ -16,7 +14,7 @@ You can use this component in your ESPHome configuration by importing it with `e
 
 ```yaml
 external_components:
-  - source: github://tjhorner/esphome-transit-tracker
+  - source: github://wxwatch/esphome-flight-tracker
     components: [flight_tracker]
 ```
 
@@ -26,76 +24,26 @@ You will need these components in your configuration:
 - [Font](https://esphome.io/components/font/)
 - [Time](https://esphome.io/components/time/)
 
-Then you can define an instance of the component in your YAML configuration. The easiest way to generate the configuration is with the [configurator tool](https://transit-tracker.eastsideurbanism.org/configurator). Once you've set the options you want, press "Generate YAML" at the bottom and paste the generated text into your configuration.
-
-Here is is a complete example; most parameters are optional:
+Then you can define an instance of the component in your YAML configuration:
 
 ```yaml
 flight_tracker:
   id: tracker
 
-  # Base URL of the Flight Tracker API
-  base_url: "wss://tt.horner.tj/"
+  # Host of the dump1090 server
+  host: "192.168.1.100"
 
-  # The feed code of the transit agency you want to track (optional)
-  feed_code: "st"
+  # Port of the dump1090 SBS1 output (default 30003)
+  port: 30003
 
-  # Maximum number of arrivals to show
+  # Maximum number of aircraft to show
   limit: 3
 
-  # Whether to display arrival or departure times
-  time_display: departure # or "arrival"
-
-  # How to list trips:
-  #   sequential: All trips across all routes in order of arrival/departure
-  #   nextPerRoute: Each route's next trip in order of arrival/departure
-  list_mode: sequential
-
-  # Default color for route names
-  # (See https://esphome.io/components/display/#color)
-  default_route_color: my_favorite_color
-
-  # Color for real-time indicator icon and text
-  realtime_color: my_second_favorite_color
-
-  # How to display the duration units.
-  # Examples:
-  #   long  = "5min" / "1h15m"
-  #   short = "5m"   / "1h15m"
-  #   none  = "5"    / "1:15"
-  show_units: long
-
-  # If true, headsign text will scroll if it doesn't fit
+  # Whether to scroll long callsigns
   scroll_headsigns: false
 
-  # List of stop and route IDs to track
-  stops:
-    - stop_id: "1_71971"
-      # If it takes you a known amount of time to walk to the
-      # stop, you can set a time offset here so that the time
-      # displayed on the board is more like a "leave by" time
-      time_offset: -8min # e.g., if it takes you 8 minutes to walk to the stop
-      routes:
-        - "1_100113"
-        - "1_102704"
-    - stop_id: "1_71961"
-      time_offset: -10min
-      routes:
-        - "1_102548"
-
-  # List of custom styles for route names and colors
-  styles:
-    - route_id: "1_102548"
-      name: "B"
-      # See https://esphome.io/components/display/#color
-      color: rapidride_red
-
-  # List of custom abbreviations for headsigns
-  abbreviations:
-    - from: "Bellevue Transit Center Crossroads"
-      to: "Bellevue TC"
-    - from: "Transit Center"
-      to: "TC"
+  # Color for realtime indicator
+  realtime_color: 0x00FF00
 ```
 
 Then, finally, in your display's draw lambda:

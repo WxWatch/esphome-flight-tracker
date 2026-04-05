@@ -16,26 +16,20 @@ namespace esphome
 
     void FlightTracker::setup()
     {
-      this->ws_client_.onMessage([this](websockets::WebsocketsMessage message)
-                                 { this->on_ws_message_(message); });
+      this->connect_tcp_();
 
-      this->ws_client_.onEvent([this](websockets::WebsocketsEvent event, String data)
-                               { this->on_ws_event_(event, data); });
-
-      this->connect_ws_();
-
-      this->set_interval("check_stale_trips", 10000, [this]()
+      this->set_interval("check_stale_aircraft", 10000, [this]()
                          {
-    if (this->ws_client_.available() && !this->schedule_state_.trips.empty()) {
-      bool has_stale_trips = false;
+    if (this->tcp_client_.connected() && !this->schedule_state_.aircraft.empty()) {
+      bool has_stale_aircraft = false;
 
       this->schedule_state_.mutex.lock();
 
       auto now = this->rtc_->now();
       if (now.is_valid()) {
-        for (auto &trip : this->schedule_state_.trips) {
-          if (now.timestamp - trip.departure_time > 60) {
-            has_stale_trips = true;
+        for (auto &aircraft : this->schedule_state_.aircraft) {
+          if (now.timestamp - aircraft.last_seen > 60) {
+            has_stale_aircraft = true;
             break;
           }
         }
@@ -43,8 +37,8 @@ namespace esphome
 
       this->schedule_state_.mutex.unlock();
 
-      if (has_stale_trips) {
-        ESP_LOGD(TAG, "Stale trips detected, reconnecting");
+      if (has_stale_aircraft) {
+        ESP_LOGD(TAG, "Stale aircraft detected, reconnecting");
         ESP_LOGD(TAG, "  Current RTC time: %d", now.timestamp);
         ESP_LOGD(TAG, "  Last heartbeat: %d", this->last_heartbeat_);
         this->reconnect();
@@ -54,7 +48,14 @@ namespace esphome
 
     void FlightTracker::loop()
     {
-      this->ws_client_.poll();
+      if (this->tcp_client_.connected())
+      {
+        while (this->tcp_client_.available())
+        {
+          String line = this->tcp_client_.readStringUntil('\n');
+          this->on_tcp_data_(line.c_str());
+        }
+      }
 
       if (this->last_heartbeat_ != 0 && millis() - this->last_heartbeat_ > 60000)
       {
@@ -67,28 +68,24 @@ namespace esphome
     void FlightTracker::dump_config()
     {
       ESP_LOGCONFIG(TAG, "Flight Tracker:");
-      ESP_LOGCONFIG(TAG, "  Base URL: %s", this->base_url_.c_str());
-      ESP_LOGCONFIG(TAG, "  Schedule: %s", this->schedule_string_.c_str());
+      ESP_LOGCONFIG(TAG, "  Host: %s", this->host_.c_str());
+      ESP_LOGCONFIG(TAG, "  Port: %d", this->port_);
       ESP_LOGCONFIG(TAG, "  Limit: %d", this->limit_);
-      ESP_LOGCONFIG(TAG, "  List mode: %s", this->list_mode_.c_str());
-      ESP_LOGCONFIG(TAG, "  Display departure times: %s", this->display_departure_times_ ? "true" : "false");
-      ESP_LOGCONFIG(TAG, "  Scroll Headsigns: %s", this->scroll_headsigns_ ? "true" : "false");
     }
 
     void FlightTracker::reconnect()
     {
       this->close();
-      this->connect_ws_();
+      this->connect_tcp_();
     }
 
     void FlightTracker::close(bool fully)
     {
+      this->tcp_client_.stop();
       if (fully)
       {
         this->fully_closed_ = true;
       }
-
-      this->ws_client_.close();
     }
 
     void FlightTracker::on_shutdown()
@@ -97,123 +94,70 @@ namespace esphome
       this->close(true);
     }
 
-    void FlightTracker::on_ws_message_(websockets::WebsocketsMessage message)
+    void FlightTracker::on_tcp_data_(const std::string &data)
     {
-      ESP_LOGV(TAG, "Received message: %s", message.rawData().c_str());
+      ESP_LOGV(TAG, "Received data: %s", data.c_str());
 
-      bool valid = json::parse_json(message.rawData(), [this](JsonObject root) -> bool
-                                    {
-    if (root["event"].as<std::string>() == "heartbeat") {
-      ESP_LOGD(TAG, "Received heartbeat");
-      this->last_heartbeat_ = millis();
-      return true;
-    }
-
-    if (root["event"].as<std::string>() != "schedule") {
-      return true;
-    }
-
-    ESP_LOGD(TAG, "Received schedule update");
-
-    this->schedule_state_.mutex.lock();
-
-    this->schedule_state_.trips.clear();
-
-    auto data = root["data"].as<JsonObject>();
-
-    for (auto trip : data["trips"].as<JsonArray>()) {
-      std::string headsign = trip["headsign"].as<std::string>();
-      for (const auto &abbr : this->abbreviations_) {
-        size_t pos = headsign.find(abbr.first);
-        if (pos != std::string::npos) {
-          ESP_LOGV(TAG, "Applying abbreviation '%s' -> '%s' in headsign", abbr.first.c_str(), abbr.second.c_str());
-          headsign.replace(pos, abbr.first.length(), abbr.second);
-        }
+      if (data.find("MSG,") != 0) {
+        return; // Not a MSG line
       }
 
-      auto route_id = trip["routeId"].as<std::string>();
-      auto route_style = this->route_styles_.find(route_id);
-
-      Color route_color = this->default_route_color_;
-      std::string route_name = trip["routeName"].as<std::string>();
-
-      if (route_style != this->route_styles_.end()) {
-        route_color = route_style->second.color;
-        route_name = route_style->second.name;
-      } else if (!trip["routeColor"].isNull()) {
-        route_color = Color(std::stoul(trip["routeColor"].as<std::string>(), nullptr, 16));
-      }
-
-      this->schedule_state_.trips.push_back({
-        .route_id = route_id,
-        .route_name = route_name,
-        .route_color = route_color,
-        .headsign = headsign,
-        .arrival_time = trip["arrivalTime"].as<time_t>(),
-        .departure_time = trip["departureTime"].as<time_t>(),
-        .is_realtime = trip["isRealtime"].as<bool>(),
-      });
-    }
-
-    this->schedule_state_.mutex.unlock();
-
-    return true; });
-
-      if (!valid)
-      {
-        this->status_set_error(LOG_STR("Failed to parse schedule data"));
+      std::vector<std::string> fields = split_string(data, ',');
+      if (fields.size() < 15) {
         return;
       }
+
+      std::string icao = fields[4];
+      std::string callsign = fields[10];
+      int altitude = atoi(fields[11].c_str());
+      int speed = atoi(fields[12].c_str());
+      int heading = atoi(fields[13].c_str());
+      float lat = atof(fields[14].c_str());
+      float lon = atof(fields[15].c_str());
+
+      if (icao.empty() || callsign.empty()) {
+        return;
+      }
+
+      this->schedule_state_.mutex.lock();
+
+      // Find existing aircraft or add new
+      auto it = std::find_if(this->schedule_state_.aircraft.begin(), this->schedule_state_.aircraft.end(),
+                             [&icao](const Aircraft &a) { return a.icao == icao; });
+
+      if (it != this->schedule_state_.aircraft.end()) {
+        it->callsign = callsign;
+        it->altitude = altitude;
+        it->speed = speed;
+        it->heading = heading;
+        it->lat = lat;
+        it->lon = lon;
+        it->last_seen = this->rtc_->now().timestamp;
+        it->is_realtime = true;
+      } else {
+        Aircraft aircraft;
+        aircraft.icao = icao;
+        aircraft.callsign = callsign;
+        aircraft.altitude = altitude;
+        aircraft.speed = speed;
+        aircraft.heading = heading;
+        aircraft.lat = lat;
+        aircraft.lon = lon;
+        aircraft.last_seen = this->rtc_->now().timestamp;
+        aircraft.is_realtime = true;
+        this->schedule_state_.aircraft.push_back(aircraft);
+      }
+
+      this->schedule_state_.mutex.unlock();
+
+      this->last_heartbeat_ = millis();
     }
 
-    void FlightTracker::on_ws_event_(websockets::WebsocketsEvent event, String data)
+    void FlightTracker::connect_tcp_()
     {
-      if (event == websockets::WebsocketsEvent::ConnectionOpened)
+      if (this->host_.empty())
       {
-        ESP_LOGD(TAG, "WebSocket connection opened");
-
-        auto message = json::build_json([this](JsonObject root)
-                                        {
-      root["event"] = "schedule:subscribe";
-
-      auto data = root["data"].to<JsonObject>();
-
-      if (!this->feed_code_.empty()) {
-        data["feedCode"] = this->feed_code_;
-      }
-
-      data["routeStopPairs"] = this->schedule_string_;
-      data["limit"] = this->limit_;
-      data["sortByDeparture"] = this->display_departure_times_;
-      data["listMode"] = this->list_mode_; });
-
-        ESP_LOGV(TAG, "Sending message: %s", message.c_str());
-        this->ws_client_.send(message.c_str());
-      }
-      else if (event == websockets::WebsocketsEvent::ConnectionClosed)
-      {
-        ESP_LOGD(TAG, "WebSocket connection closed");
-        if (!this->fully_closed_ && this->connection_attempts_ == 0)
-        {
-          this->defer([this]()
-                      { this->connect_ws_(); });
-        }
-      }
-      else if (event == websockets::WebsocketsEvent::GotPing)
-      {
-        ESP_LOGV(TAG, "Received ping");
-      }
-      else if (event == websockets::WebsocketsEvent::GotPong)
-      {
-        ESP_LOGV(TAG, "Received pong");
-      }
-    }
-
-    void FlightTracker::connect_ws_()
-    {
-      if (this->base_url_.empty())
-      {
-        ESP_LOGW(TAG, "No base URL set, not connecting");
+        ESP_LOGW(TAG, "No host set, not connecting");
         return;
       }
 
@@ -223,13 +167,39 @@ namespace esphome
         return;
       }
 
-      if (this->ws_client_.available(true))
+      if (this->tcp_client_.connected())
       {
         ESP_LOGV(TAG, "Not reconnecting, already connected");
         return;
       }
 
-      watchdog::WatchdogManager wdm(20000);
+      ESP_LOGD(TAG, "Connecting to TCP server (attempt %d): %s:%d", this->connection_attempts_, this->host_.c_str(), this->port_);
+
+      bool connection_success = this->tcp_client_.connect(this->host_.c_str(), this->port_);
+
+      if (connection_success)
+      {
+        ESP_LOGI(TAG, "TCP connection established");
+        this->connection_attempts_ = 0;
+        this->has_ever_connected_ = true;
+        this->last_heartbeat_ = millis();
+      }
+      else
+      {
+        ESP_LOGW(TAG, "TCP connection failed");
+        this->connection_attempts_++;
+        if (this->connection_attempts_ < 5)
+        {
+          this->defer([this]()
+                      { this->connect_tcp_(); }, 5000 * this->connection_attempts_);
+        }
+        else
+        {
+          ESP_LOGE(TAG, "Failed to connect after 5 attempts");
+          this->status_set_error(LOG_STR("Failed to connect to dump1090"));
+        }
+      }
+    }
 
       this->last_heartbeat_ = 0;
 
@@ -389,56 +359,54 @@ namespace esphome
       }
     }
 
-    void FlightTracker::draw_trip(
-        const Trip &trip, int y_offset, int font_height, unsigned long uptime, uint rtc_now,
-        bool no_draw, int *headsign_overflow_out, int scroll_cycle_duration)
+    void FlightTracker::draw_aircraft(
+        const Aircraft &aircraft, int y_offset, int font_height, unsigned long uptime, uint rtc_now,
+        bool no_draw, int *callsign_overflow_out, int scroll_cycle_duration)
     {
       if (!no_draw)
       {
-        this->display_->print(0, y_offset, this->font_, trip.route_color, display::TextAlign::TOP_LEFT, trip.route_name.c_str());
+        this->display_->print(0, y_offset, this->font_, Color(0xFFFFFF), display::TextAlign::TOP_LEFT, aircraft.callsign.c_str());
       }
 
-      int route_width, _;
-      this->font_->measure(trip.route_name.c_str(), &route_width, &_, &_, &_);
+      int callsign_width, _;
+      this->font_->measure(aircraft.callsign.c_str(), &callsign_width, &_, &_, &_);
 
-      auto time_display = this->localization_.fmt_duration_from_now(
-          this->display_departure_times_ ? trip.departure_time : trip.arrival_time,
-          rtc_now);
+      std::string altitude_display = std::to_string(aircraft.altitude) + "ft";
 
-      int time_width;
-      this->font_->measure(time_display.c_str(), &time_width, &_, &_, &_);
+      int altitude_width;
+      this->font_->measure(altitude_display.c_str(), &altitude_width, &_, &_, &_);
 
-      int headsign_clipping_start = route_width + 3;
-      int headsign_clipping_end = this->display_->get_width() - time_width - 2;
+      int callsign_clipping_start = 0;
+      int callsign_clipping_end = this->display_->get_width() - altitude_width - 2;
 
       if (!no_draw)
       {
-        Color time_color = trip.is_realtime ? this->realtime_color_ : Color(0xa7a7a7);
-        this->display_->print(this->display_->get_width() + 1, y_offset, this->font_, time_color, display::TextAlign::TOP_RIGHT, time_display.c_str());
+        Color altitude_color = aircraft.is_realtime ? this->realtime_color_ : Color(0xa7a7a7);
+        this->display_->print(this->display_->get_width() + 1, y_offset, this->font_, altitude_color, display::TextAlign::TOP_RIGHT, altitude_display.c_str());
       }
 
-      if (trip.is_realtime)
+      if (aircraft.is_realtime)
       {
-        headsign_clipping_end -= 8;
+        callsign_clipping_end -= 8;
 
         if (!no_draw)
         {
-          int icon_bottom_right_x = this->display_->get_width() - time_width - 2;
+          int icon_bottom_right_x = this->display_->get_width() - altitude_width - 2;
           int icon_bottom_right_y = y_offset + font_height - 6;
 
           this->draw_realtime_icon_(icon_bottom_right_x, icon_bottom_right_y, uptime);
         }
       }
 
-      int headsign_max_width = headsign_clipping_end - headsign_clipping_start;
+      int callsign_max_width = callsign_clipping_end - callsign_clipping_start;
 
-      int headsign_actual_width;
-      this->font_->measure(trip.headsign.c_str(), &headsign_actual_width, &_, &_, &_);
+      int callsign_actual_width;
+      this->font_->measure(aircraft.callsign.c_str(), &callsign_actual_width, &_, &_, &_);
 
-      int headsign_overflow = headsign_actual_width - headsign_max_width;
-      if (headsign_overflow_out)
+      int callsign_overflow = callsign_actual_width - callsign_max_width;
+      if (callsign_overflow_out)
       {
-        *headsign_overflow_out = headsign_overflow;
+        *callsign_overflow_out = callsign_overflow;
       }
 
       if (no_draw)
@@ -447,13 +415,13 @@ namespace esphome
       }
 
       int scroll_offset = 0;
-      if (headsign_overflow > 0 && scroll_cycle_duration > 0)
+      if (callsign_overflow > 0 && scroll_cycle_duration > 0)
       {
-        /// Note: The scroll may jump if headsign_clipping_end changes (e.g. due to the width of the arrival time changing).
-        /// This is probably not a big deal, since the display makes sudden changes anyway (e.g. when routes are updated)
+        /// Note: The scroll may jump if callsign_clipping_end changes (e.g. due to the width of the altitude changing).
+        /// This is probably not a big deal, since the display makes sudden changes anyway (e.g. when aircraft are updated)
         /// and this happens relatively infrequently.
 
-        int scroll_time = headsign_overflow * 1000 / scroll_speed;
+        int scroll_time = callsign_overflow * 1000 / scroll_speed;
         int scroll_cycle_time = uptime % scroll_cycle_duration;
 
         // Scroll idle (left side - default)
@@ -470,23 +438,18 @@ namespace esphome
         else if (scroll_cycle_time < idle_time_left + scroll_time + idle_time_right)
         {
           // Scroll idle (right side)
-          scroll_offset = headsign_overflow;
-        }
-        else if (scroll_cycle_time < idle_time_left + 2 * scroll_time + idle_time_right)
-        {
-          // Scrolling right
-          int time_since_scroll_start = scroll_cycle_time - (idle_time_left + scroll_time + idle_time_right);
-          scroll_offset = headsign_overflow - (time_since_scroll_start * scroll_speed / 1000);
+          scroll_offset = callsign_overflow;
         }
         else
         {
-          // Waiting for other headsigns to finish scrolling
-          // scroll_offset = 0; do nothing
+          // Scrolling right
+          int time_since_scroll_end = scroll_cycle_time - (idle_time_left + scroll_time + idle_time_right);
+          scroll_offset = callsign_overflow - (time_since_scroll_end * scroll_speed / 1000);
         }
       }
 
-      this->display_->start_clipping(headsign_clipping_start, 0, headsign_clipping_end, this->display_->get_height());
-      this->display_->print(headsign_clipping_start - scroll_offset, y_offset, this->font_, trip.headsign.c_str());
+      this->display_->start_clipping(callsign_clipping_start, callsign_clipping_end);
+      this->display_->print(-scroll_offset, y_offset, this->font_, Color(0xFFFFFF), display::TextAlign::TOP_LEFT, aircraft.callsign.c_str());
       this->display_->end_clipping();
     }
 
@@ -510,33 +473,27 @@ namespace esphome
         return;
       }
 
-      if (this->base_url_.empty())
+      if (this->host_.empty())
       {
-        this->draw_text_centered_("No base URL set", Color(0x252627));
+        this->draw_text_centered_("No host set", Color(0x252627));
         return;
       }
 
       if (this->status_has_error())
       {
-        this->draw_text_centered_("Error loading schedule", Color(0xFE4C5C));
+        this->draw_text_centered_("Error connecting to dump1090", Color(0xFE4C5C));
         return;
       }
 
       if (!this->has_ever_connected_)
       {
-        this->draw_text_centered_("Loading...", Color(0x252627));
+        this->draw_text_centered_("Connecting...", Color(0x252627));
         return;
       }
 
-      if (this->schedule_state_.trips.empty())
+      if (this->schedule_state_.aircraft.empty())
       {
-        auto message = "No upcoming arrivals";
-        if (this->display_departure_times_)
-        {
-          message = "No upcoming departures";
-        }
-
-        this->draw_text_centered_(message, Color(0x252627));
+        this->draw_text_centered_("No aircraft detected", Color(0x252627));
         return;
       }
 
@@ -549,27 +506,27 @@ namespace esphome
       int scroll_cycle_duration = 0;
       if (this->scroll_headsigns_)
       {
-        int largest_headsign_overflow = 0;
-        for (const Trip &trip : this->schedule_state_.trips)
+        int largest_callsign_overflow = 0;
+        for (const Aircraft &aircraft : this->schedule_state_.aircraft)
         {
-          int headsign_overflow;
-          this->draw_trip(trip, 0, nominal_font_height, uptime, rtc_now, true, &headsign_overflow);
-          largest_headsign_overflow = max(largest_headsign_overflow, headsign_overflow);
+          int callsign_overflow;
+          this->draw_aircraft(aircraft, 0, nominal_font_height, uptime, rtc_now, true, &callsign_overflow);
+          largest_callsign_overflow = max(largest_callsign_overflow, callsign_overflow);
         }
 
-        if (largest_headsign_overflow > 0)
+        if (largest_callsign_overflow > 0)
         {
-          int longest_scroll_time = largest_headsign_overflow * 1000 / scroll_speed;
+          int longest_scroll_time = largest_callsign_overflow * 1000 / scroll_speed;
           scroll_cycle_duration = idle_time_left + idle_time_right + 2 * longest_scroll_time;
         }
       }
 
-      int max_trips_height = (this->limit_ * this->font_->get_ascender()) + ((this->limit_ - 1) * this->font_->get_descender());
-      int y_offset = (this->display_->get_height() % max_trips_height) / 2;
+      int max_aircraft_height = (this->limit_ * this->font_->get_ascender()) + ((this->limit_ - 1) * this->font_->get_descender());
+      int y_offset = (this->display_->get_height() % max_aircraft_height) / 2;
 
-      for (const Trip &trip : this->schedule_state_.trips)
+      for (const Aircraft &aircraft : this->schedule_state_.aircraft)
       {
-        this->draw_trip(trip, y_offset, nominal_font_height, uptime, rtc_now, false, nullptr, scroll_cycle_duration);
+        this->draw_aircraft(aircraft, y_offset, nominal_font_height, uptime, rtc_now, false, nullptr, scroll_cycle_duration);
         y_offset += nominal_font_height;
       }
 

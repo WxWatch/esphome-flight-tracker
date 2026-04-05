@@ -1,7 +1,7 @@
 #pragma once
 
 #include <map>
-#include <ArduinoWebsockets.h>
+#include <WiFiClient.h>
 
 #include "esphome/core/component.h"
 #include "esphome/components/display/display.h"
@@ -43,7 +43,8 @@ namespace esphome
       void set_font(font::Font *font) { font_ = font; }
       void set_rtc(time::RealTimeClock *rtc) { rtc_ = rtc; }
 
-      void set_base_url(const std::string &base_url) { base_url_ = base_url; }
+      void set_host(const std::string &host) { host_ = host; }
+      void set_port(int port) { port_ = port; }
       void set_feed_code(const std::string &feed_code) { feed_code_ = feed_code; }
       void set_display_departure_times(bool display_departure_times) { display_departure_times_ = display_departure_times; }
       void set_schedule_string(const std::string &schedule_string) { schedule_string_ = schedule_string; }
@@ -70,9 +71,9 @@ namespace esphome
       void draw_text_centered_(const char *text, Color color);
       void draw_realtime_icon_(int bottom_right_x, int bottom_right_y, unsigned long now);
 
-      void draw_trip(
-          const Trip &trip, int y_offset, int font_height, unsigned long uptime, uint rtc_now,
-          bool no_draw = false, int *headsign_overflow_out = nullptr, int scroll_cycle_duration = 0);
+      void draw_aircraft(
+          const Aircraft &aircraft, int y_offset, int font_height, unsigned long uptime, uint rtc_now,
+          bool no_draw = false, int *callsign_overflow_out = nullptr, int scroll_cycle_duration = 0);
 
       Localization localization_{};
       ScheduleState schedule_state_;
@@ -81,17 +82,17 @@ namespace esphome
       font::Font *font_;
       time::RealTimeClock *rtc_;
 
-      websockets::WebsocketsClient ws_client_{};
+      WiFiClient tcp_client_{};
 
-      void on_ws_message_(websockets::WebsocketsMessage message);
-      void on_ws_event_(websockets::WebsocketsEvent event, String data);
-      void connect_ws_();
+      void on_tcp_data_(const std::string &data);
+      void connect_tcp_();
       int connection_attempts_ = 0;
       unsigned long last_heartbeat_ = 0;
       bool has_ever_connected_ = false;
       bool fully_closed_ = false;
 
-      std::string base_url_;
+      std::string host_;
+      int port_ = 30003;
       std::string feed_code_;
       std::string schedule_string_;
       std::string list_mode_;

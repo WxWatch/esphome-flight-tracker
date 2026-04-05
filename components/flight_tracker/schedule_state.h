@@ -8,21 +8,23 @@
 namespace esphome {
 namespace flight_tracker {
 
-class Trip {
+class Aircraft {
   public:
-    std::string route_id;
-    std::string route_name;
-    Color route_color;
-    std::string headsign;
-    time_t arrival_time;
-    time_t departure_time;
+    std::string icao;
+    std::string callsign;
+    int altitude; // feet
+    int speed; // knots
+    float lat;
+    float lon;
+    int heading; // degrees
+    time_t last_seen;
     bool is_realtime;
 };
 
 class ScheduleState {
   public:
     std::mutex mutex;
-    std::vector<Trip> trips;
+    std::vector<Aircraft> aircraft;
 };
 
 } // namespace flight_tracker
