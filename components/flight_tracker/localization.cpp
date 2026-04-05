@@ -1,7 +1,7 @@
 #include "localization.h"
 
 namespace esphome {
-namespace transit_tracker {
+namespace flight_tracker {
 
 std::string Localization::fmt_duration_from_now(time_t unix_timestamp, uint rtc_now) const {
   int diff = unix_timestamp - rtc_now;

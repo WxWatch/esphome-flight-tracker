@@ -13,10 +13,10 @@ _MINIMUM_ESPHOME_VERSION = "2025.11.0"
 DEPENDENCIES = ["network", "display", "font", "time"]
 AUTO_LOAD = ["json", "watchdog"]
 
-transit_tracker_ns = cg.esphome_ns.namespace("transit_tracker")
-TransitTracker = transit_tracker_ns.class_("TransitTracker", cg.Component)
+flight_tracker_ns = cg.esphome_ns.namespace("flight_tracker")
+FlightTracker = flight_tracker_ns.class_("FlightTracker", cg.Component)
 
-UnitDisplay = transit_tracker_ns.enum("UnitDisplay")
+UnitDisplay = flight_tracker_ns.enum("UnitDisplay")
 UNIT_DISPLAY_VALUES = {
     "long": UnitDisplay.UNIT_DISPLAY_LONG,
     "short": UnitDisplay.UNIT_DISPLAY_SHORT,
@@ -49,16 +49,16 @@ def validate_ws_url(value):
 def validate_esphome_version(obj):
     if cv.Version.parse(ESPHOME_VERSION) < cv.Version.parse(_MINIMUM_ESPHOME_VERSION):
         raise cv.Invalid(
-            "The transit_tracker component requires ESPHome version " +
+            "The flight_tracker component requires ESPHome version " +
             f"{_MINIMUM_ESPHOME_VERSION} or later."
         )
     return obj
 
 
-def _consume_transit_tracker_sockets(config: ConfigType) -> ConfigType:
-    """Register socket needs for transit_tracker component."""
+def _consume_flight_tracker_sockets(config: ConfigType) -> ConfigType:
+    """Register socket needs for flight_tracker component."""
     from esphome.components import socket
-    socket.consume_sockets(1, "transit_tracker")(config)
+    socket.consume_sockets(1, "flight_tracker")(config)
     return config
 
 
@@ -73,7 +73,7 @@ CONFIG_SCHEMA = cv.All(
     cv.only_with_framework(frameworks=Framework.ARDUINO),
     cv.Schema(
         {
-            cv.GenerateID(): cv.declare_id(TransitTracker),
+            cv.GenerateID(): cv.declare_id(FlightTracker),
             cv.GenerateID(CONF_DISPLAY_ID): cv.use_id(Display),
             cv.GenerateID(CONF_FONT_ID): cv.use_id(Font),
             cv.GenerateID(CONF_TIME_ID): cv.use_id(RealTimeClock),
@@ -118,7 +118,7 @@ CONFIG_SCHEMA = cv.All(
             ),
         }
     ).extend(cv.COMPONENT_SCHEMA),
-    _consume_transit_tracker_sockets,
+    _consume_flight_tracker_sockets,
 )
 
 

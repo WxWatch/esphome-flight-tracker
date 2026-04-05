@@ -1,4 +1,4 @@
-#include "transit_tracker.h"
+#include "flight_tracker.h"
 #include "string_utils.h"
 
 #include "esphome/core/log.h"
@@ -8,11 +8,11 @@
 #include "esphome/components/network/util.h"
 
 namespace esphome {
-namespace transit_tracker {
+namespace flight_tracker {
 
-static const char *TAG = "transit_tracker.component";
+static const char *TAG = "flight_tracker.component";
 
-void TransitTracker::setup() {
+void FlightTracker::setup() {
   this->ws_client_.onMessage([this](websockets::WebsocketsMessage message) {
     this->on_ws_message_(message);
   });
@@ -51,7 +51,7 @@ void TransitTracker::setup() {
   });
 }
 
-void TransitTracker::loop() {
+void FlightTracker::loop() {
   this->ws_client_.poll();
 
   if (this->last_heartbeat_ != 0 && millis() - this->last_heartbeat_ > 60000) {
@@ -61,8 +61,8 @@ void TransitTracker::loop() {
   }
 }
 
-void TransitTracker::dump_config() {
-  ESP_LOGCONFIG(TAG, "Transit Tracker:");
+void FlightTracker::dump_config() {
+  ESP_LOGCONFIG(TAG, "Flight Tracker:");
   ESP_LOGCONFIG(TAG, "  Base URL: %s", this->base_url_.c_str());
   ESP_LOGCONFIG(TAG, "  Schedule: %s", this->schedule_string_.c_str());
   ESP_LOGCONFIG(TAG, "  Limit: %d", this->limit_);
@@ -71,12 +71,12 @@ void TransitTracker::dump_config() {
   ESP_LOGCONFIG(TAG, "  Scroll Headsigns: %s", this->scroll_headsigns_ ? "true" : "false");
 }
 
-void TransitTracker::reconnect() {
+void FlightTracker::reconnect() {
   this->close();
   this->connect_ws_();
 }
 
-void TransitTracker::close(bool fully) {
+void FlightTracker::close(bool fully) {
   if (fully) {
     this->fully_closed_ = true;
   }
@@ -84,12 +84,12 @@ void TransitTracker::close(bool fully) {
   this->ws_client_.close();
 }
 
-void TransitTracker::on_shutdown() {
+void FlightTracker::on_shutdown() {
   this->cancel_interval("check_stale_trips");
   this->close(true);
 }
 
-void TransitTracker::on_ws_message_(websockets::WebsocketsMessage message) {
+void FlightTracker::on_ws_message_(websockets::WebsocketsMessage message) {
   ESP_LOGV(TAG, "Received message: %s", message.rawData().c_str());
 
   bool valid = json::parse_json(message.rawData(), [this](JsonObject root) -> bool {
@@ -156,7 +156,7 @@ void TransitTracker::on_ws_message_(websockets::WebsocketsMessage message) {
   }
 }
 
-void TransitTracker::on_ws_event_(websockets::WebsocketsEvent event, String data) {
+void FlightTracker::on_ws_event_(websockets::WebsocketsEvent event, String data) {
   if (event == websockets::WebsocketsEvent::ConnectionOpened) {
     ESP_LOGD(TAG, "WebSocket connection opened");
 
@@ -191,7 +191,7 @@ void TransitTracker::on_ws_event_(websockets::WebsocketsEvent event, String data
   }
 }
 
-void TransitTracker::connect_ws_() {
+void FlightTracker::connect_ws_() {
   if (this->base_url_.empty()) {
     ESP_LOGW(TAG, "No base URL set, not connecting");
     return;
@@ -246,7 +246,7 @@ void TransitTracker::connect_ws_() {
   }
 }
 
-void TransitTracker::set_abbreviations_from_text(const std::string &text) {
+void FlightTracker::set_abbreviations_from_text(const std::string &text) {
   this->abbreviations_.clear();
   for (const auto &line : split(text, '\n')) {
     auto parts = split(line, ';');
@@ -266,7 +266,7 @@ void TransitTracker::set_abbreviations_from_text(const std::string &text) {
   }
 }
 
-void TransitTracker::set_route_styles_from_text(const std::string &text) {
+void FlightTracker::set_route_styles_from_text(const std::string &text) {
   this->route_styles_.clear();
   for (const auto &line : split(text, '\n')) {
     auto parts = split(line, ';');
@@ -279,13 +279,13 @@ void TransitTracker::set_route_styles_from_text(const std::string &text) {
   }
 }
 
-void TransitTracker::draw_text_centered_(const char *text, Color color) {
+void FlightTracker::draw_text_centered_(const char *text, Color color) {
   int display_center_x = this->display_->get_width() / 2;
   int display_center_y = this->display_->get_height() / 2;
   this->display_->print(display_center_x, display_center_y, this->font_, color, display::TextAlign::CENTER, text);
 }
 
-void TransitTracker::set_realtime_color(const Color &color) {
+void FlightTracker::set_realtime_color(const Color &color) {
   this->realtime_color_ = color;
   this->realtime_color_dark_ = Color(
     (color.r * 0.5),
@@ -303,7 +303,7 @@ const uint8_t realtime_icon[6][6] = {
   {3, 0, 2, 0, 1, 1}
 };
 
-void HOT TransitTracker::draw_realtime_icon_(int bottom_right_x, int bottom_right_y, unsigned long uptime) {
+void HOT FlightTracker::draw_realtime_icon_(int bottom_right_x, int bottom_right_y, unsigned long uptime) {
   const int num_frames = 6;
   const int idle_frame_duration = 3000;
   const int anim_frame_duration = 200;
@@ -340,7 +340,7 @@ void HOT TransitTracker::draw_realtime_icon_(int bottom_right_x, int bottom_righ
   }
 }
 
-void TransitTracker::draw_trip(
+void FlightTracker::draw_trip(
     const Trip &trip, int y_offset, int font_height, unsigned long uptime, uint rtc_now,
     bool no_draw, int *headsign_overflow_out, int scroll_cycle_duration
 ) {
@@ -426,7 +426,7 @@ void TransitTracker::draw_trip(
     this->display_->end_clipping();
 }
 
-void HOT TransitTracker::draw_schedule() {
+void HOT FlightTracker::draw_schedule() {
   if (this->display_ == nullptr) {
     ESP_LOGW(TAG, "No display attached, cannot draw schedule");
     return;
@@ -499,5 +499,5 @@ void HOT TransitTracker::draw_schedule() {
   this->schedule_state_.mutex.unlock();
 }
 
-}  // namespace transit_tracker
+}  // namespace flight_tracker
 }  // namespace esphome

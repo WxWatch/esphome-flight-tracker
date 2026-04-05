@@ -12,14 +12,14 @@
 #include "localization.h"
 
 namespace esphome {
-namespace transit_tracker {
+namespace flight_tracker {
 
 struct RouteStyle {
   std::string name;
   Color color;
 };
 
-class TransitTracker : public Component {
+class FlightTracker : public Component {
   public:
     void setup() override;
     void loop() override;
@@ -105,5 +105,5 @@ class TransitTracker : public Component {
 };
 
 
-}  // namespace transit_tracker
+}  // namespace flight_tracker
 }  // namespace esphome

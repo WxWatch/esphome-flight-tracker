@@ -6,7 +6,7 @@
 #include "esphome/components/display/display.h"
 
 namespace esphome {
-namespace transit_tracker {
+namespace flight_tracker {
 
 class Trip {
   public:
@@ -25,5 +25,5 @@ class ScheduleState {
     std::vector<Trip> trips;
 };
 
-} // namespace transit_tracker
+} // namespace flight_tracker
 } // namespace esphome

@@ -5,7 +5,7 @@
 #include "esphome/components/time/real_time_clock.h"
 
 namespace esphome {
-namespace transit_tracker {
+namespace flight_tracker {
 
 enum UnitDisplay : uint8_t {
   UNIT_DISPLAY_LONG,
@@ -31,5 +31,5 @@ class Localization {
     std::string hours_short_string_ = "h";
 };
 
-}  // namespace transit_tracker
+}  // namespace flight_tracker
 }  // namespace esphome

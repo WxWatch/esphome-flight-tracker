@@ -1,4 +1,4 @@
-# ESPHome Transit Tracker Component
+# ESPHome Flight Tracker Component
 
 This is an external component for [ESPHome](https://esphome.io/) that fetches and renders a live arrivals board for any transit agency supported by the [Transit Tracker API](https://github.com/tjhorner/transit-tracker-api).
 
@@ -17,7 +17,7 @@ You can use this component in your ESPHome configuration by importing it with `e
 ```yaml
 external_components:
   - source: github://tjhorner/esphome-transit-tracker
-    components: [transit_tracker]
+    components: [flight_tracker]
 ```
 
 You will need these components in your configuration:
@@ -31,10 +31,10 @@ Then you can define an instance of the component in your YAML configuration. The
 Here is is a complete example; most parameters are optional:
 
 ```yaml
-transit_tracker:
+flight_tracker:
   id: tracker
 
-  # Base URL of the Transit Tracker API
+  # Base URL of the Flight Tracker API
   base_url: "wss://tt.horner.tj/"
 
   # The feed code of the transit agency you want to track (optional)
